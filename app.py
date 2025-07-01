@@ -3,6 +3,7 @@ import sys
 import streamlit as st
 
 # Остальные импорты
+from langchain_openai import ChatOpenAI
 import fitz
 import pytesseract
 from pdf2image import convert_from_bytes
