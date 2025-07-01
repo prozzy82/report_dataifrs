@@ -3,7 +3,6 @@ import sys
 import streamlit as st
 
 # Остальные импорты
-from langchain_openai import ChatOpenAI
 import fitz
 import pytesseract
 from pdf2image import convert_from_bytes
@@ -11,6 +10,7 @@ from PIL import Image
 import io
 import pandas as pd
 import json
+import tempfile
 
 # Настройка путей для Tesseract в Streamlit Cloud
 if os.path.exists('/app'):
@@ -33,6 +33,10 @@ except Exception as e:
     st.error(f"Ошибка при получении API ключа: {e}")
     st.stop()
 
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
+
 llm = ChatOpenAI(
     model_name="deepseek/deepseek-r1-0528",
     openai_api_key=PROVIDER_API_KEY,
@@ -40,7 +44,8 @@ llm = ChatOpenAI(
     temperature=0.1
 )
 
-# --- РЕАЛИЗАЦИЯ ФУНКЦИИ EXTRACT_TEXT_FROM_FILE ---
+# --- РЕАЛИЗАЦИЯ ФУНКЦИЙ ---
+
 @st.cache_data
 def extract_text_from_file(file_bytes, filename):
     """Извлекает текст из PDF или изображения с поддержкой OCR."""
@@ -57,14 +62,17 @@ def extract_text_from_file(file_bytes, filename):
             # Если текст не извлекся, пробуем OCR
             if not text.strip():
                 st.warning("PDF не содержит текста. Использую OCR...")
-                images = convert_from_bytes(file_bytes)
+                images = convert_from_bytes(file_bytes, dpi=300)
                 for image in images:
-                    text += pytesseract.image_to_string(image, lang='rus')
+                    text += pytesseract.image_to_string(image, lang='rus+eng')
                     
         elif ext in ["png", "jpg", "jpeg"]:
             # Обработка изображений
             image = Image.open(io.BytesIO(file_bytes))
-            text = pytesseract.image_to_string(image, lang='rus')
+            # Улучшаем качество изображения для OCR
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            text = pytesseract.image_to_string(image, lang='rus+eng')
         else:
             st.error(f"Неподдерживаемый формат файла: {ext}")
             return None
@@ -75,9 +83,65 @@ def extract_text_from_file(file_bytes, filename):
         st.error(f"Ошибка при извлечении текста: {e}")
         return None
 
-# ... (остальные функции остаются без изменений)
+@st.cache_data
+def classify_report(_llm, text: str) -> str:
+    """Определяет тип отчета (баланс, ОПУ и т.д.) с помощью LLM."""
+    # Запрос к LLM
+    prompt = ChatPromptTemplate.from_template(
+        "Текст финансового отчета: {text}\n\n"
+        "Определи тип финансового отчета. Выбери один из: {report_types}.\n"
+        "Ответ выдай только как строку, без пояснений."
+    )
+    chain = prompt | _llm | StrOutputParser()
+    report_types_str = ", ".join(REPORT_TEMPLATES.keys())
+    return chain.invoke({"text": text, "report_types": report_types_str})
 
-# --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ С ПОДДЕРЖКОЙ МНОЖЕСТВЕННОЙ ЗАГРУЗКИ ---
+@st.cache_data
+def extract_data_with_template(_llm, text: str, report_type: str) -> list:
+    """Извлекает данные из текста отчета по заданному шаблону."""
+    # Получаем шаблон для данного типа отчета
+    template = get_report_template_as_string(report_type)
+    
+    # Создаем парсер
+    parser = JsonOutputParser()
+    
+    # Создаем промпт
+    prompt = ChatPromptTemplate.from_template(
+        template + "\n\nИзвлеки данные из следующего текста финансового отчета:\n{text}"
+    )
+    
+    chain = prompt | _llm | parser
+    return chain.invoke({"text": text})
+
+def to_excel_bytes(df):
+    """Конвертирует DataFrame в байты Excel файла."""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Report')
+    return output.getvalue()
+
+def enrich_data_with_russian_names(data: list, report_type: str) -> list:
+    """Добавляет русские названия статей в извлеченные данные."""
+    translation_map = get_translation_map(report_type)
+    enriched_data = []
+    
+    for item in data:
+        english_name = item.get("line_item")
+        if not english_name:
+            continue
+            
+        russian_name = translation_map.get(english_name, "Статья не найдена в шаблоне")
+        
+        enriched_data.append({
+            "Статья (RU)": russian_name,
+            "Line Item (EN)": english_name,
+            "value": item.get("value"),
+            "year": item.get("year"),
+            "unit": item.get("unit")
+        })
+    return enriched_data
+
+# --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
 st.title("🤖 Унификация отчета")
 
 st.sidebar.header("Загрузка файлов")
