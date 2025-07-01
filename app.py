@@ -18,7 +18,7 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.exceptions import OutputParserException
 
 # --- КОНФИГУРАЦИЯ ---
-st.set_page_config(layout="wide", page_title="Унификация Финансовых Отчетов")
+st.set_page_config(layout="wide", page_title="Унификация Отчета")
 
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
 # Используем st.secrets для ключа, что является лучшей практикой для Streamlit
@@ -172,7 +172,7 @@ def to_excel_bytes(df):
     return output.getvalue()
 
 # --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
-st.title("Унификация и Анализ Финансовых Отчетов")
+st.title("Унификация Отчета")
 
 st.sidebar.header("Загрузка Файлов")
 uploaded_files = st.sidebar.file_uploader(
