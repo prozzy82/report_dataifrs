@@ -84,7 +84,7 @@ def enrich_data_with_russian_names(data: list, report_type: str) -> list:
     return enriched_data
 
 # --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
-st.title("🤖 Автоматизация разбора финансовых отчетов")
+st.title("🤖 Унификация отчета")
 
 st.sidebar.header("Загрузка файла")
 uploaded_file = st.sidebar.file_uploader(
