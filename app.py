@@ -49,10 +49,10 @@ def extract_text_from_file(file_bytes, filename):
             if len(text.strip()) < 150:
                 st.warning(f"Текстовый слой в '{filename}' пуст. Используется OCR...")
                 images = convert_from_bytes(file_bytes, dpi=300)
-                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 4') for img in images])  # Изменено на psm 4 для таблиц
+                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images])  # Изменено на psm 6 для таблиц
         elif ext in [".png", ".jpg", ".jpeg"]:
             image = Image.open(io.BytesIO(file_bytes))
-            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 4')  # Изменено на psm 4 для таблиц
+            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')  # Изменено на psm 6 для таблиц
         else: return None
         return text.strip()
     except Exception as e:
