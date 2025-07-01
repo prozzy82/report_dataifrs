@@ -49,10 +49,10 @@ def extract_text_from_file(file_bytes, filename):
             if len(text.strip()) < 150:
                 st.warning(f"Текстовый слой в '{filename}' пуст. Используется OCR...")
                 images = convert_from_bytes(file_bytes, dpi=300)
-                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 4') for img in images])  # Изменено на psm 4 для таблиц
+                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images])  # Изменено на psm 6 для таблиц
         elif ext in [".png", ".jpg", ".jpeg"]:
             image = Image.open(io.BytesIO(file_bytes))
-            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 4')  # Изменено на psm 4 для таблиц
+            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')  # Изменено на psm 6 для таблиц
         else: return None
         return text.strip()
     except Exception as e:
@@ -123,7 +123,7 @@ def extract_raw_financial_data(_llm, text: str) -> list:
     
     chain = prompt | _llm | parser
     try:
-        result = chain.invoke({"text": text[:15000]})
+        result = chain.invoke({"text": text[:150000]})
         
         # Отладочная информация
         st.session_state.last_raw_prompt = prompt_text
@@ -177,7 +177,7 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> list:
     chain = prompt | _llm | parser
     try:
         # Преобразуем сырые данные в строку для промпта
-        raw_data_str = json.dumps(raw_data, ensure_ascii=False, indent=2)[:8000]
+        raw_data_str = json.dumps(raw_data, ensure_ascii=False, indent=2)[:100000]
         
         result = chain.invoke({
             "template_items": template_items,
