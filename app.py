@@ -16,22 +16,21 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map
 
 # --- КОНФИГУРАЦИЯ ---
-st.set_page_config(layout="wide", page_title="Анализатор Финансовых Отчетов")
+st.set_page_config(layout="wide", page_title="Унификация отчета")
 
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
 try:
-    PROVIDER_API_KEY = st.secrets["NOVITA_API_KEY"]
+    PROVIDER_API_KEY = os.getenv("PROVIDER_API_KEY")
 except (FileNotFoundError, KeyError):
     st.error("Не удалось найти NOVITA_API_KEY. Создайте файл .streamlit/secrets.toml и добавьте ключ.")
     st.stop()
 
 llm = ChatOpenAI(
-    model_name="deepseek/deepseek-coder",
-    openai_api_key=PROVIDER_API_KEY,
-    openai_api_base="https://api.novita.ai/v3/openai",
-    temperature=0.1,
-    max_tokens=4096
-)
+        model_name="deepseek/deepseek-r1-0528",
+        openai_api_key=PROVIDER_API_KEY,
+        openai_api_base="https://api.novita.ai/v3/openai",
+        temperature=0.1
+    )
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 # ... (функции extract_text_from_file, classify_report, extract_data_with_template остаются БЕЗ ИЗМЕНЕНИЙ) ...
