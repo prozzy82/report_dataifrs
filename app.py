@@ -30,7 +30,7 @@ except (FileNotFoundError, KeyError):
     st.stop()
 
 llm = ChatOpenAI(
-    model_name="google/gemma-3-27b-it",
+    model_name="mistralai/mistral-7b-instruct",
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
     temperature=0.1
