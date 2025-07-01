@@ -167,7 +167,7 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> list:
         "7. Для каждого периода создай отдельный объект в values_by_period\n\n"
         "Сырые данные:\n{raw_data}"
     )
-    
+
     parser = JsonOutputParser()
     prompt = ChatPromptTemplate.from_messages([
         ("system", prompt_text),
@@ -183,7 +183,7 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> list:
             "template_items": template_items,
             "raw_data": raw_data_str
         })
-        
+
         # Отладочная информация
         st.session_state.last_std_prompt = prompt_text
         st.session_state.last_std_output = result
@@ -194,45 +194,6 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> list:
         if hasattr(e, 'llm_output'):
             st.error("Ответ LLM:")
             st.code(e.llm_output)
-        return []
-
-# НОВАЯ ФУНКЦИЯ: Стандартизация данных
-@st.cache_data
-def standardize_data(_llm, raw_data: list, report_type: str) -> list:
-    """Сопоставляет сырые данные со стандартным шаблоном"""
-    template_items = get_report_template_as_string(report_type)
-    if not template_items: return []
-
-    parser = JsonOutputParser()
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "Ты — эксперт по финансовой отчетности. Сопоставь сырые финансовые данные со стандартным шаблоном. "
-         "Ответь ТОЛЬКО JSON-массивом объектов в формате:\n"
-         "[\n"
-         "  {\n"
-         "    \"line_item\": \"название_статьи_из_шаблона\",\n"
-         "    \"unit\": \"единица_измерения\",\n"
-         "    \"values_by_period\": [\n"
-         "      {\"period\": \"2024\", \"value\": число, \"components\": [{\"source_item\": \"исходная_статья\", \"source_value\": число}]}\n"
-         "    ]\n"
-         "  }\n"
-         "]\n\n"
-         "ПРАВИЛА:\n"
-         "1. Используй ТОЛЬКО статьи из шаблона: {template_items}\n"
-         "2. Для каждой стандартной статьи найди соответствующие сырые статьи и агрегируй значения\n"
-         "3. Если стандартная статья состоит из нескольких сырых, укажи все компоненты\n"
-         "4. Если сырая статья не соответствует шаблону, НЕ включай ее\n"
-         "5. Если для статьи нет данных, верни null в value\n"
-         "Сырые данные:\n{raw_data}"
-        ),
-        ("user", "Выполни сопоставление строго по правилам.")
-    ])
-
-    chain = prompt | _llm | parser
-    try:
-        return chain.invoke({"template_items": template_items, "raw_data": json.dumps(raw_data)})
-    except Exception as e:
-        st.error(f"Ошибка стандартизации: {e}")
         return []
 
 # Обновленная функция для "разворачивания" данных
