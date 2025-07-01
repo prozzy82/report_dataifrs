@@ -183,9 +183,9 @@ def to_excel_bytes(df):
     return output.getvalue()
 
 # --- ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
-st.title("🤖 Унификация финансовой отчетности")
+st.title("extract data report")
 
-st.sidebar.header("Загрузка файлов")
+st.sidebar.header("upload file")
 uploaded_files = st.sidebar.file_uploader(
     "Загрузите сканы отчета (один или несколько файлов)",
     type=["pdf", "png", "jpg", "jpeg"],
