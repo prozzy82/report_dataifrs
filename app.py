@@ -2,11 +2,6 @@ import os
 import sys
 import streamlit as st
 
-# Настройка путей для Tesseract в Streamlit Cloud
-if os.path.exists('/app'):
-    os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
-    pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
-
 # Остальные импорты
 import fitz
 import pytesseract
@@ -15,6 +10,11 @@ from PIL import Image
 import io
 import pandas as pd
 import json
+
+# Настройка путей для Tesseract в Streamlit Cloud
+if os.path.exists('/app'):
+    os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+    pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 ## ИЗМЕНЕНИЕ: импортируем новую функцию get_translation_map
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map
