@@ -1,4 +1,4 @@
-# app.py
+import os
 import streamlit as st
 import fitz  # PyMuPDF
 import pytesseract
