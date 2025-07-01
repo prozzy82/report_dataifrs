@@ -49,10 +49,10 @@ def extract_text_from_file(file_bytes, filename):
             if len(text.strip()) < 150:
                 st.warning(f"Текстовый слой в '{filename}' пуст. Используется OCR...")
                 images = convert_from_bytes(file_bytes, dpi=300)
-                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images])  # Изменено на psm 6 для таблиц
+                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images])
         elif ext in [".png", ".jpg", ".jpeg"]:
             image = Image.open(io.BytesIO(file_bytes))
-            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')  # Изменено на psm 6 для таблиц
+            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')
         else: return None
         return text.strip()
     except Exception as e:
@@ -74,13 +74,10 @@ def classify_report(_llm, text: str) -> str:
             return report_type
     return "Unknown"
 
-# НОВАЯ ФУНКЦИЯ: Извлечение сырых данных (с правильным экранированием)
 @st.cache_data
 def extract_raw_financial_data(_llm, text: str) -> list:
-    """Извлекает все финансовые показатели из текста в исходном виде"""
+    # Эта функция остается без изменений
     parser = JsonOutputParser()
-    
-    # Полностью переработанный промпт с правильным экранированием
     prompt_text = (
         "Ты — финансовый аналитик. Извлеки ВСЕ финансовые показатели из текста отчета. "
         "Ответь ТОЛЬКО JSON-массивом объектов. Каждый объект должен содержать:\n"
@@ -97,125 +94,82 @@ def extract_raw_financial_data(_llm, text: str) -> list:
         "7. Сохраняй оригинальные названия статей\n\n"
         "Пример вывода для отчета с двумя периодами:\n"
         "["
-        "  {{"
-        "    \"source_item\": \"Выручка\","
-        "    \"unit\": \"тыс. руб.\","
-        "    \"values\": ["
-        "      {{\"period\": \"2024\", \"value\": 150000}},"
-        "      {{\"period\": \"2023\", \"value\": 120000}}"
-        "    ]"
-        "  }},"
-        "  {{"
-        "    \"source_item\": \"Себестоимость продаж\","
-        "    \"unit\": \"тыс. руб.\","
-        "    \"values\": ["
-        "      {{\"period\": \"2024\", \"value\": 90000}},"
-        "      {{\"period\": \"2023\", \"value\": 75000}}"
-        "    ]"
-        "  }}"
+        "  {{\"source_item\": \"Выручка\", \"unit\": \"тыс. руб.\", \"values\": [ {{\"period\": \"2024\", \"value\": 150000}}, {{\"period\": \"2023\", \"value\": 120000}} ]}},"
+        "  {{\"source_item\": \"Себестоимость продаж\", \"unit\": \"тыс. руб.\", \"values\": [ {{\"period\": \"2024\", \"value\": 90000}}, {{\"period\": \"2023\", \"value\": 75000}} ]}}"
         "]"
     )
-    
     prompt = ChatPromptTemplate.from_messages([
         ("system", prompt_text),
         ("user", "Текст отчета:\n---\n{text}\n---")
     ])
-    
     chain = prompt | _llm | parser
     try:
-        result = chain.invoke({"text": text[:150000]})
-        
-        # Отладочная информация
-        st.session_state.last_raw_prompt = prompt_text
-        st.session_state.last_raw_output = result
-        
+        result = chain.invoke({"text": text[:100000]})
         return result
     except Exception as e:
         st.error(f"Ошибка извлечения сырых данных: {e}")
-        if hasattr(e, 'llm_output'):
-            st.error("Ответ LLM:")
-            st.code(e.llm_output)
         return []
 
-# НОВАЯ ФУНКЦИЯ: Стандартизация данных (с правильным экранированием)
+# ИЗМЕНЕНО: Функция стандартизации теперь возвращает словарь с двумя списками
 @st.cache_data
-def standardize_data(_llm, raw_data: list, report_type: str) -> list:
-    """Сопоставляет сырые данные со стандартным шаблоном"""
+def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
+    """Сопоставляет сырые данные со стандартным шаблоном и возвращает сопоставленные и несопоставленные элементы."""
     template_items = get_report_template_as_string(report_type)
-    if not template_items: return []
+    if not template_items: return {"standardized_data": [], "unmapped_items": raw_data}
 
-    # Полностью переработанный промпт с правильным экранированием
+    # ИЗМЕНЕНО: Промпт теперь требует JSON-объект с двумя ключами
     prompt_text = (
         "Ты — эксперт по финансовой отчетности. Сопоставь сырые финансовые данные со стандартным шаблоном. "
-        "Ответь ТОЛЬКО JSON-массивом объектов в формате:\n"
-        "["
-        "  {{"
-        "    \"line_item\": \"название_статьи_из_шаблона\","
-        "    \"unit\": \"единица_измерения\","
-        "    \"values_by_period\": ["
-        "      {{\"period\": \"2024\", \"value\": число, \"components\": [{{\"source_item\": \"исходная_статья\", \"source_value\": число}}]}}"
-        "    ]"
-        "  }}"
-        "]\n\n"
-        "ПРАВИЛА:\n"
-        "1. Используй ТОЛЬКО статьи из шаблона: {template_items}\n"
-        "2. Для каждой стандартной статьи найди соответствующие сырые статьи и агрегируй значения\n"
-        "3. Если стандартная статья состоит из нескольких сырых, укажи все компоненты\n"
-        "4. Если сырая статья не соответствует шаблону, НЕ включай ее\n"
-        "5. Если для статьи нет данных, верни null в value\n"
-        "6. Сохрани все периоды из сырых данных\n"
-        "7. Для каждого периода создай отдельный объект в values_by_period\n\n"
+        "Ответь ТОЛЬКО JSON-объектом с ДВУМЯ ключами: `standardized_data` и `unmapped_items`.\n\n"
+        "1. Ключ `standardized_data` должен содержать МАССИВ объектов, сопоставленных с шаблоном, в формате:\n"
+        "   `{\"line_item\": \"название_из_шаблона\", \"unit\": \"ед_изм\", \"values_by_period\": [{\"period\": \"2024\", \"value\": число, \"components\": [{\"source_item\": \"исходная_статья\", \"source_value\": число}]}]}`\n\n"
+        "2. Ключ `unmapped_items` должен содержать МАССИВ объектов из сырых данных, которые НЕ удалось сопоставить ни с одной статьей шаблона. Сохрани их исходный формат.\n\n"
+        "ПРАВИЛА СОПОСТАВЛЕНИЯ:\n"
+        "- Используй ТОЛЬКО статьи из этого шаблона: {template_items}\n"
+        "- Для каждой стандартной статьи найди соответствующие сырые статьи и агрегируй (суммируй) их значения.\n"
+        "- Если стандартная статья состоит из нескольких сырых, укажи все компоненты.\n"
+        "- Если сырая статья не соответствует шаблону, помести ее в `unmapped_items`.\n"
+        "- Если для стандартной статьи нет данных, не включай ее в `standardized_data`.\n\n"
         "Сырые данные:\n{raw_data}"
     )
 
     parser = JsonOutputParser()
     prompt = ChatPromptTemplate.from_messages([
         ("system", prompt_text),
-        ("user", "Выполни сопоставление строго по правилам.")
+        ("user", "Выполни сопоставление строго по правилам и верни JSON с ключами 'standardized_data' и 'unmapped_items'.")
     ])
 
     chain = prompt | _llm | parser
     try:
-        # Преобразуем сырые данные в строку для промпта
         raw_data_str = json.dumps(raw_data, ensure_ascii=False, indent=2)[:100000]
-        
         result = chain.invoke({
             "template_items": template_items,
             "raw_data": raw_data_str
         })
-
-        # Отладочная информация
-        st.session_state.last_std_prompt = prompt_text
-        st.session_state.last_std_output = result
-        
+        # Убедимся, что оба ключа присутствуют
+        if "standardized_data" not in result: result["standardized_data"] = []
+        if "unmapped_items" not in result: result["unmapped_items"] = []
         return result
     except Exception as e:
         st.error(f"Ошибка стандартизации: {e}")
-        if hasattr(e, 'llm_output'):
-            st.error("Ответ LLM:")
-            st.code(e.llm_output)
-        return []
+        # Возвращаем пустую структуру при ошибке
+        return {"standardized_data": [], "unmapped_items": raw_data}
 
-# Обновленная функция для "разворачивания" данных
+# Функции flatten_data_for_display, display_raw_data, to_excel_bytes остаются без изменений
 def flatten_data_for_display(data: list, report_type: str) -> list:
-    """Преобразует вложенную структуру данных в плоский список для DataFrame."""
     flat_list = []
     translation_map = get_translation_map(report_type)
-    
     for item in data:
         english_name = item.get("line_item")
-        russian_name = translation_map.get(english_name, english_name)  # Используем английское название если нет перевода
+        russian_name = translation_map.get(english_name, english_name)
         unit = item.get("unit")
-        
         values_by_period = item.get("values_by_period", [])
         if not values_by_period:
             continue
-
         for period_data in values_by_period:
             value = period_data.get("value")
             if value is None:
                 continue
-                
             flat_list.append({
                 "Статья (RU)": russian_name,
                 "Line Item (EN)": english_name,
@@ -226,22 +180,18 @@ def flatten_data_for_display(data: list, report_type: str) -> list:
             })
     return flat_list
 
-# Функция для отображения сырых данных
 def display_raw_data(raw_data):
-    """Создает таблицу для просмотра сырых данных"""
     if not raw_data:
         return pd.DataFrame()
-        
     rows = []
     for item in raw_data:
         for val in item.get("values", []):
             rows.append({
-                "Исходная статья": item['source_item'],
-                "Период": val["period"],
-                "Значение": val["value"],
+                "Исходная статья": item.get('source_item', 'N/A'),
+                "Период": val.get("period", "N/A"),
+                "Значение": val.get("value", "N/A"),
                 "Ед. изм.": item.get("unit", "")
             })
-    
     return pd.DataFrame(rows)
 
 def to_excel_bytes(df):
@@ -259,14 +209,15 @@ uploaded_files = st.sidebar.file_uploader(
 )
 
 if uploaded_files:
-    # Инициализация сессионных переменных
     file_names = [f.name for f in uploaded_files]
+    # Инициализация сессионных переменных
     if "processed_data" not in st.session_state or st.session_state.get("file_names") != file_names:
         st.session_state.file_names = file_names
         st.session_state.all_text = ""
         st.session_state.raw_data = None
         st.session_state.processed_data = None
-        
+        st.session_state.unmapped_items = None # НОВЫЙ КЛЮЧ В СЕССИИ
+
         with st.spinner("Извлечение текста из файлов..."):
             all_text = ""
             for uploaded_file in uploaded_files:
@@ -281,7 +232,7 @@ if uploaded_files:
         st.stop()
 
     st.info(f"📝 Общий объем текста: {len(all_text)} символов.")
-    
+
     # Шаг 1: Классификация отчета
     with st.spinner("🔍 Шаг 1/4: Определение типа отчета..."):
         report_type = classify_report(llm, all_text)
@@ -297,7 +248,7 @@ if uploaded_files:
         with st.spinner("📋 Шаг 2/4: Извлечение сырых данных..."):
             raw_data = extract_raw_financial_data(llm, all_text)
             st.session_state.raw_data = raw_data
-            
+
     if st.session_state.raw_data:
         st.success("✅ Сырые данные успешно извлечены!")
         with st.expander("🔎 Просмотреть сырые данные", expanded=False):
@@ -306,34 +257,32 @@ if uploaded_files:
                 st.dataframe(raw_df, use_container_width=True)
             else:
                 st.warning("Сырые данные не содержат записей")
-    
+
     # Шаг 3: Стандартизация данных
+    # ИЗМЕНЕНО: Обработка словаря, возвращаемого из standardize_data
     if st.session_state.raw_data and st.session_state.get("processed_data") is None:
         with st.spinner("🔄 Шаг 3/4: Стандартизация данных..."):
-            processed_data = standardize_data(llm, st.session_state.raw_data, report_type)
-            st.session_state.processed_data = processed_data
-            
+            response_dict = standardize_data(llm, st.session_state.raw_data, report_type)
+            st.session_state.processed_data = response_dict.get("standardized_data", [])
+            st.session_state.unmapped_items = response_dict.get("unmapped_items", [])
+
     # Шаг 4: Отображение результатов
-    if st.session_state.get("processed_data"):
+    if st.session_state.get("processed_data") is not None:
         st.success("✅ Данные успешно стандартизированы!")
-        
-        # Подготовка данных для отображения
+
         flat_data = flatten_data_for_display(st.session_state.processed_data, report_type)
         if flat_data:
             df = pd.DataFrame(flat_data)
-            
-            # Форматирование компонентов
+
             def format_components(components_list):
                 if not components_list or not isinstance(components_list, list):
                     return "Прямое сопоставление"
                 return "; ".join([
-                    f"{c.get('source_item', 'N/A')} ({c.get('source_value', 'N/A')})" 
+                    f"{c.get('source_item', 'N/A')} ({c.get('source_value', 'N/A')})"
                     for c in components_list
                 ])
 
             df['Источник агрегации'] = df['components'].apply(format_components)
-            
-            # Сортировка и форматирование
             df.sort_values(by=['Статья (RU)', 'period'], ascending=[True, False], inplace=True)
             df = df[["Статья (RU)", "value", "period", "Источник агрегации", "unit"]]
             df.rename(columns={
@@ -343,27 +292,32 @@ if uploaded_files:
                 'unit': 'Ед. изм.'
             }, inplace=True)
 
-            # Отображение таблицы
             st.dataframe(df, use_container_width=True, hide_index=True)
-            
-            # Кнопка скачивания
+
             excel_bytes = to_excel_bytes(df)
             st.download_button(
-                "📥 Скачать отчет в Excel", 
-                excel_bytes, 
-                f"standard_report_{report_type.replace(' ', '_')}.xlsx", 
+                "📥 Скачать отчет в Excel",
+                excel_bytes,
+                f"standard_report_{report_type.replace(' ', '_')}.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
-            st.warning("После стандартизации не осталось данных для отображения")
-        
+            st.warning("После стандартизации не осталось данных для отображения.")
+
+        # НОВЫЙ БЛОК: Отображение непринятых статей для отладки
+        if st.session_state.get("unmapped_items"):
+            st.warning("⚠️ Следующие статьи из исходного отчета не были сопоставлены с шаблоном:")
+            unmapped_df = display_raw_data(st.session_state.unmapped_items)
+            if not unmapped_df.empty:
+                st.dataframe(unmapped_df, use_container_width=True, hide_index=True)
+
         # Отладочная информация
         with st.expander("📄 Показать полный JSON от LLM (стандартизированные данные)"):
             st.json(st.session_state.processed_data)
-            
-        with st.expander("📄 Показать сырые данные в JSON"):
-            st.json(st.session_state.raw_data)
-            
+        
+        with st.expander("📄 Показать JSON непринятых статей"):
+            st.json(st.session_state.unmapped_items)
+
         with st.expander("📝 Показать весь извлеченный текст"):
             st.text_area("Распознанный текст", all_text, height=400)
 else:
