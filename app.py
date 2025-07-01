@@ -18,7 +18,7 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.exceptions import OutputParserException
 
 # --- КОНФИГУРАЦИЯ ---
-st.set_page_config(layout="wide", page_title="Унификация Отчета")
+st.set_page_config(layout="wide", page_title="Извлечение данных отчета")
 
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
 try:
@@ -206,7 +206,7 @@ def to_excel_bytes(df):
     return output.getvalue()
 
 # --- ОБНОВЛЕННЫЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
-st.title("📊 Унификация Финансового Отчета")
+st.title("📊 Извлечение данных отчета")
 
 st.sidebar.header("Загрузка Файлов")
 uploaded_files = st.sidebar.file_uploader(
