@@ -4,7 +4,10 @@ xlsxwriter
 langchain
 langchain-core
 langchain-openai
-PyMuPDF     # Чтение текстового слоя PDF (fitz)
-pdf2image    # Конвертация страниц PDF в изображения (для сканов)
+PyMuPDF
+pdf2image
 pytesseract
-Pillow      # Обработка изображений
+Pillow
+python-dotenv
+numpy
+openpyxl
