@@ -23,17 +23,16 @@ st.set_page_config(layout="wide", page_title="Унификация отчета"
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
 # Используем st.secrets для ключа, что является лучшей практикой для Streamlit
 try:
-    PROVIDER_API_KEY = st.secrets["NOVITA_API_KEY"]
+    PROVIDER_API_KEY = os.getenv("PROVIDER_API_KEY")
 except (FileNotFoundError, KeyError):
     st.error("Ключ 'NOVITA_API_KEY' не найден. Пожалуйста, создайте файл .streamlit/secrets.toml и добавьте его.")
     st.stop()
 
 llm = ChatOpenAI(
-    model_name="deepseek/deepseek-coder",  # Модели 'coder' лучше справляются с JSON
+    model_name="deepseek/deepseek-r1-0528",
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
-    temperature=0.1,  # Низкая температура для предсказуемости
-    max_tokens=4096
+    temperature=0.1
 )
 
 # --- РЕАЛИЗАЦИЯ ФУНКЦИЙ ---
