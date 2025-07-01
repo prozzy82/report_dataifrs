@@ -1,0 +1,10 @@
+streamlit
+pandas
+xlsxwriter
+langchain
+langchain-core
+langchain-openai
+PyMuPDF     # Чтение текстового слоя PDF (fitz)
+pdf2image    # Конвертация страниц PDF в изображения (для сканов)
+pytesseract
+Pillow      # Обработка изображений
