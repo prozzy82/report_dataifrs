@@ -54,25 +54,26 @@ def extract_text_from_file(file_bytes, filename):
         text = ""
         
         if ext == "pdf":
-            # Обработка PDF
+            # Попытка извлечь текст напрямую
             with fitz.open(stream=file_bytes, filetype="pdf") as doc:
                 for page in doc:
                     text += page.get_text()
             
             # Если текст не извлекся, пробуем OCR
-            if not text.strip():
-                st.warning("PDF не содержит текста. Использую OCR...")
+            if not text.strip() or len(text) < 100:  # Проверка на минимальное количество текста
+                st.warning("PDF не содержит достаточного текста. Использую OCR...")
                 images = convert_from_bytes(file_bytes, dpi=300)
                 for image in images:
-                    text += pytesseract.image_to_string(image, lang='rus+eng')
+                    # Предобработка изображения для улучшения OCR
+                    image = image.convert('L')  # В градации серого
+                    text += pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')
                     
         elif ext in ["png", "jpg", "jpeg"]:
             # Обработка изображений
             image = Image.open(io.BytesIO(file_bytes))
-            # Улучшаем качество изображения для OCR
-            if image.mode != 'RGB':
-                image = image.convert('RGB')
-            text = pytesseract.image_to_string(image, lang='rus+eng')
+            if image.mode != 'L':
+                image = image.convert('L')  # В градации серого
+            text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')
         else:
             st.error(f"Неподдерживаемый формат файла: {ext}")
             return None
@@ -86,15 +87,24 @@ def extract_text_from_file(file_bytes, filename):
 @st.cache_data
 def classify_report(_llm, text: str) -> str:
     """Определяет тип отчета (баланс, ОПУ и т.д.) с помощью LLM."""
-    # Запрос к LLM
+    # Улучшенный запрос к LLM
     prompt = ChatPromptTemplate.from_template(
-        "Текст финансового отчета: {text}\n\n"
-        "Определи тип финансового отчета. Выбери один из: {report_types}.\n"
-        "Ответ выдай только как строку, без пояснений."
+        "Ты финансовый эксперт. Определи тип финансового отчета в следующем тексте.\n"
+        "Доступные типы отчетов: {report_types}\n\n"
+        "Текст отчета:\n{text}\n\n"
+        "Твоя задача: строго назвать только тип отчета из доступных вариантов, без пояснений, без дополнительного текста."
+        "Если отчет содержит несколько частей, определи основной тип."
+        "Ответ должен содержать ТОЛЬКО название типа отчета."
     )
     chain = prompt | _llm | StrOutputParser()
     report_types_str = ", ".join(REPORT_TEMPLATES.keys())
-    return chain.invoke({"text": text, "report_types": report_types_str})
+    response = chain.invoke({"text": text, "report_types": report_types_str})
+
+    # Постобработка ответа - извлечение только типа отчета
+    for report_type in REPORT_TEMPLATES.keys():
+        if report_type in response:
+            return report_type
+    return response
 
 @st.cache_data
 def extract_data_with_template(_llm, text: str, report_type: str) -> list:
