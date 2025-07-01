@@ -29,7 +29,7 @@ except (FileNotFoundError, KeyError):
     st.stop()
 
 llm = ChatOpenAI(
-    model_name="deepseek/deepseek-r1-0528",
+    model_name="google/gemma-3-27b-it",
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
     temperature=0.1
