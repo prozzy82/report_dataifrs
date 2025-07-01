@@ -236,7 +236,7 @@ def display_raw_data(raw_data):
     for item in raw_data:
         for val in item.get("values", []):
             rows.append({
-                "Исходная статья": item["source_item"],
+                "Исходная статья": item['source_item'],
                 "Период": val["period"],
                 "Значение": val["value"],
                 "Ед. изм.": item.get("unit", "")
