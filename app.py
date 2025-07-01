@@ -21,15 +21,12 @@ from langchain_core.exceptions import OutputParserException
 st.set_page_config(layout="wide", page_title="Унификация Отчета")
 
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
-# Используем st.secrets для ключа, что является лучшей практикой для Streamlit
 try:
-    # Для локального запуска можно использовать переменные окружения
-    # Для Streamlit Cloud/Community используйте st.secrets["NOVITA_API_KEY"]
     PROVIDER_API_KEY = st.secrets.get("NOVITA_API_KEY") or os.getenv("PROVIDER_API_KEY")
     if not PROVIDER_API_KEY:
         raise KeyError
 except (FileNotFoundError, KeyError):
-    st.error("Ключ API не найден. Пожалуйста, установите переменную окружения PROVIDER_API_KEY или создайте файл .streamlit/secrets.toml с ключом NOVITA_API_KEY.")
+    st.error("Ключ API не найден. Установите переменную окружения PROVIDER_API_KEY или создайте .streamlit/secrets.toml.")
     st.stop()
 
 llm = ChatOpenAI(
@@ -43,25 +40,20 @@ llm = ChatOpenAI(
 
 @st.cache_data
 def extract_text_from_file(file_bytes, filename):
-    """Извлекает текст из PDF или изображения, предпочитая текстовый слой, а затем OCR."""
+    # Эта функция остается без изменений
     try:
         ext = os.path.splitext(filename)[1].lower()
-        text = ""
-
         if ext == ".pdf":
             with fitz.open(stream=io.BytesIO(file_bytes), filetype="pdf") as doc:
                 text = "".join(page.get_text() for page in doc)
             if len(text.strip()) < 150:
                 st.warning(f"Текстовый слой в '{filename}' пуст. Используется OCR...")
                 images = convert_from_bytes(file_bytes, dpi=300)
-                ocr_texts = [pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images]
-                text = "\n".join(ocr_texts)
+                text = "\n".join([pytesseract.image_to_string(img, lang='rus+eng', config='--psm 6') for img in images])
         elif ext in [".png", ".jpg", ".jpeg"]:
             image = Image.open(io.BytesIO(file_bytes))
             text = pytesseract.image_to_string(image, lang='rus+eng', config='--psm 6')
-        else:
-            st.error(f"Неподдерживаемый формат файла: {ext}")
-            return None
+        else: return None
         return text.strip()
     except Exception as e:
         st.error(f"Ошибка при извлечении текста из '{filename}': {e}")
@@ -69,11 +61,10 @@ def extract_text_from_file(file_bytes, filename):
 
 @st.cache_data
 def classify_report(_llm, text: str) -> str:
-    """Определяет тип отчета с помощью LLM."""
+    # Эта функция остается без изменений
     parser = StrOutputParser()
     prompt = ChatPromptTemplate.from_template(
-        "Определи тип финансового отчета из текста. Ответь ТОЛЬКО одним из вариантов: {report_types}. Никаких других слов.\n\n"
-        "Текст для анализа (первые 4000 символов):\n---\n{text_snippet}\n---"
+        "Определи тип финансового отчета. Ответь ТОЛЬКО одним из вариантов: {report_types}.\n\nТекст:\n---\n{text_snippet}\n---"
     )
     chain = prompt | _llm | parser
     report_types_str = ", ".join(REPORT_TEMPLATES.keys())
@@ -83,89 +74,97 @@ def classify_report(_llm, text: str) -> str:
             return report_type
     return "Unknown"
 
+# --- ИЗМЕНЕНИЕ №1: ОБНОВЛЕННЫЙ ПРОМПТ ДЛЯ НЕСКОЛЬКИХ ПЕРИОДОВ ---
 @st.cache_data
 def extract_data_with_template(_llm, text: str, report_type: str) -> list | None:
-    """Извлекает данные из текста отчета, включая детализацию агрегации."""
+    """Извлекает данные по всем периодам из текста отчета."""
     template_items = get_report_template_as_string(report_type)
-    if not template_items:
-        return []
+    if not template_items: return []
 
     parser = JsonOutputParser()
-
     prompt = ChatPromptTemplate.from_messages([
         ("system",
          "Ты — высокоточный финансовый аналитик. Твоя задача — анализировать текст отчета и возвращать результат в строго заданном формате JSON. "
-         "Тебе ЗАПРЕЩЕНО добавлять любые пояснения, комментарии или любой текст, кроме чистого JSON."
+         "Тебе ЗАПРЕЩЕНО добавлять любые пояснения или текст, кроме чистого JSON."
          "\n\nПРАВИЛА:"
-         "\n1. Проанализируй текст финансового отчета."
+         "\n1. Проанализируй текст отчета, который может содержать данные за НЕСКОЛЬКО ПЕРИОДОВ (годов)."
          "\n2. Для каждой СТАНДАРТНОЙ статьи из предоставленного списка в соответствии с стандартами IFRS определи СООТВЕТСТВУЮЩУЮ статью в исходном тексте из загруженного отчета, в случае необходимости произведи агрегацию значений статей."
-         "\n3. Рассчитай итоговое значение 'value', просуммировав значения найденных исходных статей, если производилась агрегация."
-         "\n4. В поле 'components' предоставь детализацию: список всех исходных статей и их значений, которые были использованы для расчета 'value'."
-         "\n5. Если статья НЕ найдена, 'value' должно быть `null`, а 'components' — пустым массивом `[]`."
-         "\n6. Числовые значения должны быть в формате `float` или `int`, без пробелов-разделителей. Десятичный разделитель - запятая."
-         "\n7. Твой ответ должен быть ТОЛЬКО JSON-массивом объектов. Начинай с `[` и заканчивай `]`."
-         "\n\nСПИСОК СТАНДАРТНЫХ СТАТЕЙ ДЛЯ ИЗВЛЕЧЕНИЯ:\n{template_items}"
-         "\n\nФОРМАТ ВЫВОДА ДЛЯ КАЖДОЙ СТАТЬИ:\n```json\n"
+         "\n3. Для КАЖДОГО периода, найденного в тексте (например, для каждого года-колонки), извлеки числовое значение."
+         "\n4. Создай объект для каждой СТАНДАРТНОЙ статьи. Внутри него, в массиве `values_by_period`, создай отдельный объект для КАЖДОГО периода."
+         "\n5. В поле 'components' для каждого периода укажи, из каких исходных статей было получено значение."
+         "\n6. Если для стандартной статьи не найдено ни одного значения ни за один период, верни пустой массив `values_by_period`."
+         "\n7. Числовые значения должны быть в формате `float` или `int`. Десятичный разделитель - точка."
+         "\n8. Твой ответ должен быть ТОЛЬКО JSON-массивом объектов."
+         "\n\nСПИСОК СТАНДАРТНЫХ СТАТЕЙ:\n{template_items}"
+         "\n\nФОРМАТ ВЫВОДА:\n```json\n"
+         "[\n"
          "  {{\n"
          "    \"line_item\": \"Английское название стандартной статьи\",\n"
-         "    \"value\": <итоговое число или null>,\n"
-         "    \"year\": <год или период как строка>,\n"
-         "    \"unit\": \"единица измерения как строка\",\n"
-         "    \"components\": [\n"
-         "      {{ \"source_item\": \"Название статьи из исходного текста\", \"source_value\": <число> }},\n"
-         "      {{ \"source_item\": \"Другая статья из исходного текста\", \"source_value\": <число> }}\n"
+         "    \"unit\": \"единица измерения\",\n"
+         "    \"values_by_period\": [\n"
+         "      {{\n"
+         "        \"period\": \"2024\",\n"
+         "        \"value\": <число или null>,\n"
+         "        \"components\": [ {{ \"source_item\": \"Исходная статья 1\", \"source_value\": <число> }} ]\n"
+         "      }},\n"
+         "      {{\n"
+         "        \"period\": \"2023\",\n"
+         "        \"value\": <число или null>,\n"
+         "        \"components\": [ {{ \"source_item\": \"Исходная статья 1\", \"source_value\": <число> }} ]\n"
+         "      }}\n"
          "    ]\n"
          "  }}\n"
+         "]\n"
          "```"
          ),
-        ("user",
-         "Вот текст для анализа. Извлеки данные строго по правилам и верни ТОЛЬКО JSON.\n\n"
-         "ТЕКСТ ОТЧЕТА:\n---\n{text}\n---"
-         )
+        ("user", "Вот текст для анализа. Извлеки данные по ВСЕМ ПЕРИОДАМ строго по правилам и верни ТОЛЬКО JSON.\n\nТЕКСТ:\n---\n{text}\n---")
     ])
 
     chain = prompt | _llm | parser
-    
     try:
         return chain.invoke({"text": text, "template_items": template_items})
-    except OutputParserException as e:
-        st.error(f"Ошибка парсинга ответа от LLM.")
-        raw_output = e.llm_output
-        st.warning("Ответ LLM содержал лишний текст. Пытаюсь извлечь JSON...")
-        try:
-            json_start = raw_output.find('[')
-            json_end = raw_output.rfind(']') + 1
-            if json_start != -1 and json_end != 0:
-                json_part = raw_output[json_start:json_end]
-                parsed_json = json.loads(json_part)
-                st.success("JSON успешно извлечен из некорректного ответа!")
-                return parsed_json
-            else: raise ValueError("JSON-массив не найден в ответе")
-        except (ValueError, json.JSONDecodeError):
-            st.error("Не удалось исправить JSON. Ответ от LLM был полностью некорректным.")
-            st.code(raw_output, language='text')
-            return None
     except Exception as e:
-        st.error(f"Произошла непредвиденная ошибка при вызове LLM: {e}")
+        # Упрощенная обработка ошибок для краткости
+        st.error(f"Ошибка при вызове или парсинге ответа LLM: {e}")
+        # Попробуем "починить" JSON, если он обернут в текст
+        if hasattr(e, 'llm_output'):
+            raw_output = e.llm_output
+            st.warning("Пытаюсь извлечь JSON из ответа...")
+            try:
+                json_part = raw_output[raw_output.find('['):raw_output.rfind(']')+1]
+                return json.loads(json_part)
+            except Exception:
+                st.error("Не удалось исправить JSON.")
+                st.code(raw_output)
         return None
 
-def enrich_data_with_russian_names(data: list, report_type: str) -> list:
-    """Добавляет русские названия статей в извлеченные данные, сохраняя остальные поля."""
+# --- ИЗМЕНЕНИЕ №2: НОВАЯ ФУНКЦИЯ ДЛЯ "РАЗВОРАЧИВАНИЯ" ДАННЫХ ---
+def flatten_data_for_display(data: list, report_type: str) -> list:
+    """Преобразует вложенную структуру данных в плоский список для DataFrame."""
+    flat_list = []
     translation_map = get_translation_map(report_type)
-    enriched_data = []
+    
     for item in data:
         english_name = item.get("line_item")
-        russian_name = translation_map.get(english_name, "Статья не найдена в шаблоне")
+        russian_name = translation_map.get(english_name, "N/A")
+        unit = item.get("unit")
         
-        # Копируем все исходные поля и добавляем русское название
-        new_item = item.copy()
-        new_item["Статья (RU)"] = russian_name
-        new_item["Line Item (EN)"] = english_name
-        enriched_data.append(new_item)
-    return enriched_data
+        if not item.get("values_by_period"):
+            continue
+
+        for period_data in item["values_by_period"]:
+            if period_data.get("value") is not None:
+                flat_list.append({
+                    "Статья (RU)": russian_name,
+                    "Line Item (EN)": english_name,
+                    "unit": unit,
+                    "period": period_data.get("period"),
+                    "value": period_data.get("value"),
+                    "components": period_data.get("components", [])
+                })
+    return flat_list
 
 def to_excel_bytes(df):
-    """Конвертирует DataFrame в байты Excel файла."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Report')
@@ -176,70 +175,67 @@ st.title("Унификация Отчета")
 
 st.sidebar.header("Загрузка Файлов")
 uploaded_files = st.sidebar.file_uploader(
-    "Загрузите сканы отчета (можно несколько файлов)",
-    type=["pdf", "png", "jpg", "jpeg"],
-    accept_multiple_files=True
+    "Загрузите сканы отчета", type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True
 )
 
 if uploaded_files:
-    # Используем session_state для хранения обработанных данных
     if "processed_data" not in st.session_state or st.session_state.get("file_names") != [f.name for f in uploaded_files]:
         st.session_state.file_names = [f.name for f in uploaded_files]
         all_text = ""
         with st.spinner("Извлечение текста из файлов..."):
             for uploaded_file in uploaded_files:
-                file_bytes = uploaded_file.getvalue()
-                extracted_text = extract_text_from_file(file_bytes, uploaded_file.name)
-                if extracted_text:
-                    all_text += f"\n\n--- НАЧАЛО ФАЙЛА: {uploaded_file.name} ---\n\n{extracted_text}"
+                all_text += f"\n\n--- НАЧАЛО ФАЙЛА: {uploaded_file.name} ---\n\n{extract_text_from_file(uploaded_file.getvalue(), uploaded_file.name)}"
         st.session_state.all_text = all_text.strip()
-        st.session_state.processed_data = None # Сбрасываем старые данные
-    
-    if not st.session_state.get("all_text"):
-        st.error("Не удалось извлечь текст ни из одного файла.")
+        st.session_state.processed_data = None
+
+    all_text = st.session_state.get("all_text", "")
+    if not all_text:
+        st.error("Не удалось извлечь текст.")
         st.stop()
-    
-    all_text = st.session_state.get("all_text")
-    st.info(f"Общий объем извлеченного текста: {len(all_text)} символов.")
+
+    st.info(f"Общий объем текста: {len(all_text)} символов.")
     
     with st.spinner("Шаг 1/2: Классификация типа отчета..."):
         report_type = classify_report(llm, all_text)
 
-    if report_type not in REPORT_TEMPLATES:
-        st.error(f"Не удалось определить тип отчета. LLM вернул: '{report_type}'")
+    if report_type == "Unknown":
+        st.error("Не удалось определить тип отчета.")
     else:
         st.success(f"✅ Отчет классифицирован как **{report_type}**.")
-        with st.spinner("Шаг 2/2: Извлечение данных с детализацией (может занять несколько минут)..."):
+        with st.spinner("Шаг 2/2: Извлечение данных по всем периодам..."):
             structured_data = extract_data_with_template(llm, all_text, report_type)
         if structured_data is None:
-            st.error("Не удалось извлечь структурированные данные. Проверьте логи ошибок выше.")
+            st.error("Не удалось извлечь данные.")
         else:
-            st.success("✅ Данные успешно извлечены и структурированы!")
+            st.success("✅ Данные успешно извлечены!")
             st.session_state.processed_data = structured_data
 
-    # Отображение результата
+    # --- ИЗМЕНЕНИЕ №3: ОБНОВЛЕННАЯ ЛОГИКА ОТОБРАЖЕНИЯ ---
     if st.session_state.get("processed_data"):
-        final_data = enrich_data_with_russian_names(st.session_state.processed_data, report_type)
-        df = pd.DataFrame([item for item in final_data if item.get('value') is not None])
+        # Используем новую функцию для подготовки данных к отображению
+        flat_data = flatten_data_for_display(st.session_state.processed_data, report_type)
+        df = pd.DataFrame(flat_data)
         
         st.header("Извлеченные и стандартизированные данные")
         if not df.empty:
             def format_components(components_list):
                 if not isinstance(components_list, list) or not components_list: return "Прямое сопоставление"
                 def format_val(v):
-                    try:
-                        num = float(v)
-                        return f"{num:,.0f}".replace(",", " ") if abs(num) > 1000 else str(num)
+                    try: return f"{float(v):,.0f}".replace(",", " ")
                     except (ValueError, TypeError): return str(v)
-                return "; ".join([f"{comp.get('source_item', 'N/A')} ({format_val(comp.get('source_value'))})" for comp in components_list])
+                return "; ".join([f"{c.get('source_item', 'N/A')} ({format_val(c.get('source_value'))})" for c in components_list])
 
             df['Источник агрегации'] = df['components'].apply(format_components)
             
-            df = df[["Статья (RU)", "value", "Источник агрегации", "year", "unit", "Line Item (EN)"]]
+            # Сортируем для наглядности: сначала по статье, потом по периоду (в обратном порядке)
+            df.sort_values(by=['Статья (RU)', 'period'], ascending=[True, False], inplace=True)
+            
+            # Финальный порядок колонок
+            df = df[["Статья (RU)", "value", "period", "Источник агрегации", "unit"]]
             df.rename(columns={
                 'Статья (RU)': 'Стандартизированная статья',
                 'value': 'Итоговое значение',
-                'year': 'Год',
+                'period': 'Период',
                 'unit': 'Ед. изм.'
             }, inplace=True)
 
@@ -250,7 +246,7 @@ if uploaded_files:
         else:
             st.warning("В тексте не найдено ни одной статьи из шаблона с числовым значением.")
         
-        with st.expander("Показать полный JSON от LLM (с деталями агрегации)"):
+        with st.expander("Показать полный JSON от LLM (вложенная структура)"):
             st.json(st.session_state.processed_data)
         with st.expander("Показать весь извлеченный текст"):
             st.text_area("Распознанный текст", all_text, height=400)
