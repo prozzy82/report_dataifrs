@@ -10,23 +10,7 @@ import json
 import copy
 
 # Импорт из вашего файла шаблонов
-from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map
-
-# --- ДОБАВЛЕНО: Функция для получения кодов статей ---
-def get_report_codes(report_type: str) -> dict:
-    """Возвращает словарь кодов статей для заданного типа отчета {англ_название: код}"""
-    if report_type not in REPORT_TEMPLATES:
-        return {}
-    
-    codes = {}
-    for eng_name, details in REPORT_TEMPLATES[report_type].items():
-        # Проверяем, является ли details словарем и есть ли в нем ключ 'code'
-        if isinstance(details, dict) and 'code' in details:
-            codes[eng_name] = details['code']
-        else:
-            # Если нет, то оставляем пустую строку для кода
-            codes[eng_name] = ""
-    return codes
+from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map, get_report_codes
 
 # Импорты LangChain
 from langchain_openai import ChatOpenAI
