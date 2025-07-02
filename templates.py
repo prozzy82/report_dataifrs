@@ -59,7 +59,16 @@ REPORT_TEMPLATES = {
     "Income tax expense (from continuing operations)": {"ru": "Расходы по налогу на прибыль", "code": "IS_TAX"},
     "Profit (loss) from continuing operations": {"ru": "Прибыль (убыток) от продолжающейся деятельности", "code": "IS_CONT_OPS"},
     "Profit (loss) from discontinued operations": {"ru": "Прибыль (убыток) от прекращаемой деятельности", "code": "IS_DISC_OPS"},
-    "Other comprehensive income": {"ru": "Прочий совокупный доход", "code": "IS_OCI"}
+    "Other comprehensive income": {"ru": "Прочий совокупный доход", "code": "IS_OCI"},
+    "Difference between carrying amount of dividends payable and carrying amount of non-cash assets distributed": {"ru": "Разница между начисленными дивидендами и балансовой стоимостью переданных неденежных активов", "code": "IS_DIVDIFF"},
+    "Gains (losses) on net monetary position": {"ru": "Прибыли (убытки) по чистым денежным позициям", "code": "IS_NETMON"},
+    "Gain (loss) arising from derecognition of financial assets measured at amortised cost": {"ru": "Прибыль (убыток) от выбытия финансовых активов, учитываемых по амортизируемой стоимости", "code": "IS_AMORTLOSS"},
+    "Impairment loss (impairment gain and reversal of impairment loss)": {"ru": "Убытки от обесценения (прибыли от обесценения и восстановление убытков от обесценения)", "code": "IS_IMPAIR"},
+    "Share of profit (loss) of associates and joint ventures accounted for using equity method": {"ru": "Доля прибыли (убытка) ассоциированных компаний и совместных предприятий", "code": "IS_EQSHARE"},
+    "Other income (expense) from subsidiaries, jointly controlled entities and associates": {"ru": "Прочие прибыли (убытки) от дочерних, совместных и ассоциированных компаний", "code": "IS_SUBSOTHER"},
+    "Gains (losses) arising from difference between previous carrying amount and fair value of financial assets reclassified as measured at fair value": {"ru": "Прибыли (убытки) возникшие из-за разницы между предыдущей балансовой стоимостью и новой оценкой", "code": "IS_RECLASS"},
+    "Cumulative gain (loss) previously recognised in other comprehensive income arising from reclassification of financial assets out of fair value through other comprehensive income into fair value through profit or loss measurement category": {"ru": "Накопленная прибыль (убыток), ранее признанная при реклассификации финансовых активов", "code": "IS_CUMGAIN"},
+    "Hedging gains (losses) for hedge of group of items with offsetting risk positions": {"ru": "Прибыль (убыток) от хеджирования группы объектов", "code": "IS_HEDGE"}
     }
 }
 
