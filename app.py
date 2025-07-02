@@ -12,6 +12,22 @@ import copy
 # Импорт из вашего файла шаблонов
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map
 
+# --- ДОБАВЛЕНО: Функция для получения кодов статей ---
+def get_report_codes(report_type: str) -> dict:
+    """Возвращает словарь кодов статей для заданного типа отчета {англ_название: код}"""
+    if report_type not in REPORT_TEMPLATES:
+        return {}
+    
+    codes = {}
+    for eng_name, details in REPORT_TEMPLATES[report_type].items():
+        # Проверяем, является ли details словарем и есть ли в нем ключ 'code'
+        if isinstance(details, dict) and 'code' in details:
+            codes[eng_name] = details['code']
+        else:
+            # Если нет, то оставляем пустую строку для кода
+            codes[eng_name] = ""
+    return codes
+
 # Импорты LangChain
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -23,7 +39,7 @@ st.set_page_config(layout="wide", page_title="Извлечение данных 
 
 # --- ИНИЦИАЛИЗАЦИЯ LLM ---
 try:
-    # ИЗМЕНЕНО: Более надежный способ получения ключа
+    # Более надежный способ получения ключа
     PROVIDER_API_KEY = st.secrets.get("NOVITA_API_KEY") or os.getenv("PROVIDER_API_KEY")
     if not PROVIDER_API_KEY:
         st.error("Ключ API не найден. Установите переменную окружения PROVIDER_API_KEY или создайте .streamlit/secrets.toml.")
@@ -250,13 +266,15 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
 def flatten_data_for_display(data: list, report_type: str) -> list:
     """Преобразует структурированные данные в плоский формат для отображения"""
     flat_list = []
-    translation_map = get_translation_map(report_type)
+    # Получаем словарь перевода (теперь это словарь словарей)
+    translation_dict = get_translation_map(report_type)
     
     for item in data:
         english_name = item.get("line_item")
-        item_info = translation_map.get(english_name, {})
-        russian_name = item_info.get("ru", english_name)
-        code = item_info.get("code", "")  # Получаем код
+        # Получаем информацию о статье: словарь с 'ru' и 'code'
+        item_info = translation_dict.get(english_name, {})
+        russian_name = item_info.get("ru", english_name)  # Если нет, оставляем английское
+        code = item_info.get("code", "")  # Код статьи
         
         values_by_period = item.get("values_by_period", [])
         if not values_by_period: 
