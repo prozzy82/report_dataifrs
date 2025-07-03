@@ -12,8 +12,6 @@ import numpy as np
 
 # Импорт из вашего файла шаблонов
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map, get_report_codes
-# Импорт из файла таксономии
-from taxonomy import IFRS_TAXONOMY, find_parent 
 
 # Импорты LangChain
 from langchain_openai import ChatOpenAI
@@ -326,64 +324,6 @@ def transform_to_wide_format(long_df):
     
     return wide_df
 
-@st.cache_data
-def analyze_unmapped_items(_llm, unmapped_items: list) -> list:
-    """
-    Анализирует несопоставленные статьи, чтобы найти их возможное место в иерархии МСФО.
-    """
-    if not unmapped_items:
-        return []
-
-    # Используем только названия статей для анализа
-    source_items_to_analyze = [item['source_item'] for item in unmapped_items if isinstance(item, dict)]
-    if not source_items_to_analyze:
-        return []
-
-    parser = JsonOutputParser()
-    prompt_text = (
-        "Ты — эксперт по МСФО. Для каждой статьи из списка определи ее наиболее вероятный "
-        "эквивалент в стандартной таксономии МСФО. Ответь ТОЛЬКО JSON-объектом, "
-        "где ключ — это исходная статья, а значение — ее стандартное название на английском (CamelCase).\n\n"
-        "Пример: {{ \"Прочие доходы от операций\": \"OtherOperatingIncome\" }}\n\n"
-        "Список для анализа:\n{items_to_analyze}"
-    )
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", prompt_text),
-        ("user", "Выполни сопоставление и верни JSON.")
-    ])
-    chain = prompt | _llm | parser
-    
-    try:
-        items_json_string = json.dumps(source_items_to_analyze, ensure_ascii=False)
-        # LLM сопоставляет исходные названия с английскими названиями из таксономии
-        mapped_to_ifrs = chain.invoke({"items_to_analyze": items_json_string})
-
-        analysis_results = []
-        for item in unmapped_items:
-            if not isinstance(item, dict): continue
-            
-            source_name = item['source_item']
-            ifrs_name = mapped_to_ifrs.get(source_name)
-            
-            analysis_info = {
-                "source_item": source_name,
-                "ifrs_equivalent": ifrs_name if ifrs_name else "Не определено",
-                "potential_parent": "N/A"
-            }
-            
-            # Если нашли эквивалент, ищем его родителя в нашей таксономии
-            if ifrs_name:
-                parents = find_parent(ifrs_name, IFRS_TAXONOMY)
-                if parents:
-                    analysis_info["potential_parent"] = ", ".join(parents)
-            
-            analysis_results.append(analysis_info)
-            
-        return analysis_results
-        
-    except Exception as e:
-        st.warning(f"Ошибка при анализе несопоставленных статей: {e}")
-        return []
 
 # --- ОБНОВЛЕННЫЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
 st.title("📊 Извлечение данных отчета")
@@ -532,23 +472,6 @@ if uploaded_files:
             unmapped_df = display_raw_data(st.session_state.unmapped_items)
             if not unmapped_df.empty:
                 st.dataframe(unmapped_df, use_container_width=True, hide_index=True)
-                
-                if st.button("🔬 Проанализировать несопоставленные статьи"):
-            # Код ВНУТРИ if st.button должен иметь ЕЩЕ ОДИН отступ вправо
-            with st.spinner("Анализ остатков с помощью таксономии МСФО..."):
-                analysis_results = analyze_unmapped_items(llm, st.session_state.unmapped_items)
-                if analysis_results:
-                    st.subheader("Результаты анализа несопоставленных статей")
-                    analysis_df = pd.DataFrame(analysis_results)
-                    analysis_df.rename(columns={
-                        "source_item": "Исходная статья",
-                        "ifrs_equivalent": "Вероятный эквивалент в МСФО",
-                        "potential_parent": "Возможная родительская статья"
-                    }, inplace=True)
-                    st.dataframe(analysis_df, use_container_width=True, hide_index=True)
-                    st.info("💡 Используйте эту информацию, чтобы вручную скорректировать ваш отчет в Excel.")
-                else:
-                    st.info("Не удалось провести дополнительный анализ.")
 
         # Дополнительная информация для отладки
         with st.expander("📄 Показать JSON стандартизированных данных"):
