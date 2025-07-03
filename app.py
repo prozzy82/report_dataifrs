@@ -8,6 +8,7 @@ import io
 import pandas as pd
 import json
 import copy
+import numpy as np
 
 # Импорт из вашего файла шаблонов
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map, get_report_codes
@@ -295,12 +296,33 @@ def display_raw_data(raw_data):
             })
     return pd.DataFrame(rows)
 
-def to_excel_bytes(df):
-    """Конвертирует DataFrame в байты Excel файла"""
+def to_excel_bytes(wide_df, long_df):
+    """Конвертирует DataFrame в байты Excel файла с двумя листами"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Report')
+        wide_df.to_excel(writer, index=False, sheet_name='Отчет')
+        long_df.to_excel(writer, index=False, sheet_name='Детализация')
     return output.getvalue()
+
+def transform_to_wide_format(long_df):
+    """Преобразует данные из длинного формата в широкий с колонками для каждого периода"""
+    # Создаем сводную таблицу
+    wide_df = long_df.pivot_table(
+        index=['Код статьи', 'Стандартизированная статья', 'Ед. изм.'],
+        columns='Период',
+        values='Итоговое значение',
+        aggfunc='first'  # Берем первое значение (должно быть только одно)
+    ).reset_index()
+    
+    # Переименуем колонки с периодами
+    wide_df.columns.name = None  # Убираем название индекса колонок
+    
+    # Переставляем колонки: последний период первым
+    period_cols = [col for col in wide_df.columns if col not in ['Код статьи', 'Стандартизированная статья', 'Ед. изм.']]
+    period_cols.sort(reverse=True)  # Сортируем периоды по убыванию (новые сначала)
+    wide_df = wide_df[['Код статьи', 'Стандартизированная статья', 'Ед. изм.'] + period_cols]
+    
+    return wide_df
 
 
 # --- ОБНОВЛЕННЫЙ ИНТЕРФЕЙС ПРИЛОЖЕНИЯ ---
@@ -393,7 +415,8 @@ if uploaded_files:
 
         flat_data = flatten_data_for_display(st.session_state.processed_data, report_type)
         if flat_data:
-            df = pd.DataFrame(flat_data)
+            # Создаем длинный DataFrame
+            long_df = pd.DataFrame(flat_data)
             
             # Форматирование компонентов для отображения
             def format_components(components_list):
@@ -401,13 +424,10 @@ if uploaded_files:
                     return "Прямое сопоставление"
                 return "; ".join([f"{c.get('source_item', 'N/A')} ({c.get('source_value', 'N/A')})" for c in components_list])
 
-            df['Источник агрегации'] = df['components'].apply(format_components)
-            
-            # Сортировка по коду и периоду
-            df.sort_values(by=['Код', 'period'], ascending=[True, False], inplace=True)
+            long_df['Источник агрегации'] = long_df['components'].apply(format_components)
             
             # Переименование колонок
-            df.rename(columns={
+            long_df.rename(columns={
                 'Код': 'Код статьи',
                 'Статья (RU)': 'Стандартизированная статья',
                 'value': 'Итоговое значение',
@@ -415,15 +435,29 @@ if uploaded_files:
                 'unit': 'Ед. изм.'
             }, inplace=True)
             
-            # Выбор и порядок колонок для отображения
-            df = df[["Код статьи", "Стандартизированная статья", "Итоговое значение", "Период", "Источник агрегации", "Ед. изм."]]
+            # Сортировка по коду и периоду (по убыванию периода)
+            long_df.sort_values(by=['Код статьи', 'Период'], ascending=[True, False], inplace=True)
             
-            st.dataframe(df, use_container_width=True, hide_index=True)
-
-            # Кнопка скачивания Excel
-            excel_bytes = to_excel_bytes(df)
+            # Создаем широкий формат
+            wide_df = transform_to_wide_format(long_df)
+            
+            # --- ВЫБОР ФОРМАТА ОТОБРАЖЕНИЯ ---
+            display_format = st.radio("Формат отображения:", 
+                                     ["Стандартный (периоды в колонках)", "Детальный (со списком периодов)"])
+            
+            if display_format == "Стандартный (периоды в колонках)":
+                st.dataframe(wide_df, use_container_width=True, hide_index=True)
+            else:
+                # Показываем детальный формат: только нужные колонки
+                detail_columns = ["Код статьи", "Стандартизированная статья", "Итоговое значение", "Период", "Источник агрегации", "Ед. изм."]
+                st.dataframe(long_df[detail_columns], use_container_width=True, hide_index=True)
+            
+            # --- ЭКСПОРТ В EXCEL ---
+            excel_bytes = to_excel_bytes(wide_df, long_df[detail_columns])
             st.download_button(
-                "📥 Скачать отчет в Excel", excel_bytes, f"standard_report_{report_type.replace(' ', '_')}.xlsx",
+                "📥 Скачать отчет в Excel", 
+                excel_bytes, 
+                f"standard_report_{report_type.replace(' ', '_')}.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
         else:
