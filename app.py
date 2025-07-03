@@ -532,7 +532,8 @@ if uploaded_files:
             unmapped_df = display_raw_data(st.session_state.unmapped_items)
             if not unmapped_df.empty:
                 st.dataframe(unmapped_df, use_container_width=True, hide_index=True)
-                if st.button("🔬 Проанализировать несопоставленные статьи"):
+                
+        if st.button("🔬 Проанализировать несопоставленные статьи"):
                 with st.spinner("Анализ остатков с помощью таксономии МСФО..."):
                     analysis_results = analyze_unmapped_items(llm, st.session_state.unmapped_items)
                     if analysis_results:
