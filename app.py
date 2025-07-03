@@ -204,11 +204,26 @@ def flatten_data_for_display(data: list, report_type: str) -> list:
     return flat_list
 
 def display_raw_data(raw_data):
-    """Создает DataFrame для отображения сырых или несопоставленных данных"""
-    if not raw_data: return pd.DataFrame()
+    """
+    Создает DataFrame для отображения сырых или несопоставленных данных.
+    УСТОЙЧИВАЯ ВЕРСИЯ: Проверяет, что каждый элемент является словарем.
+    """
+    if not raw_data: 
+        return pd.DataFrame()
+        
     rows = []
     for item in raw_data:
+        # --- ДОБАВЛЕНА ПРОВЕРКА ---
+        # Если item не является словарем, пропускаем его и переходим к следующему
+        if not isinstance(item, dict):
+            continue
+        # --------------------------
+            
         for val in item.get("values", []):
+            # Дополнительная проверка, что 'val' тоже является словарем
+            if not isinstance(val, dict):
+                continue
+
             rows.append({
                 "Исходная статья": item.get('source_item', 'N/A'),
                 "Период": val.get("period", "N/A"),
