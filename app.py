@@ -441,6 +441,10 @@ if uploaded_files:
             # Создаем широкий формат
             wide_df = transform_to_wide_format(long_df)
             
+            # Определяем колонки для детального отображения
+            detail_columns = ["Код статьи", "Стандартизированная статья", "Итоговое значение", 
+                             "Период", "Источник агрегации", "Ед. изм."]
+            
             # --- ВЫБОР ФОРМАТА ОТОБРАЖЕНИЯ ---
             display_format = st.radio("Формат отображения:", 
                                      ["Стандартный (периоды в колонках)", "Детальный (со списком периодов)"])
@@ -449,7 +453,6 @@ if uploaded_files:
                 st.dataframe(wide_df, use_container_width=True, hide_index=True)
             else:
                 # Показываем детальный формат: только нужные колонки
-                detail_columns = ["Код статьи", "Стандартизированная статья", "Итоговое значение", "Период", "Источник агрегации", "Ед. изм."]
                 st.dataframe(long_df[detail_columns], use_container_width=True, hide_index=True)
             
             # --- ЭКСПОРТ В EXCEL ---
