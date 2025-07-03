@@ -533,21 +533,22 @@ if uploaded_files:
             if not unmapped_df.empty:
                 st.dataframe(unmapped_df, use_container_width=True, hide_index=True)
                 
-        if st.button("🔬 Проанализировать несопоставленные статьи"):
-                with st.spinner("Анализ остатков с помощью таксономии МСФО..."):
-                    analysis_results = analyze_unmapped_items(llm, st.session_state.unmapped_items)
-                    if analysis_results:
-                        st.subheader("Результаты анализа несопоставленных статей")
-                        analysis_df = pd.DataFrame(analysis_results)
-                        analysis_df.rename(columns={
-                            "source_item": "Исходная статья",
-                            "ifrs_equivalent": "Вероятный эквивалент в МСФО",
-                            "potential_parent": "Возможная родительская статья"
-                        }, inplace=True)
-                        st.dataframe(analysis_df, use_container_width=True, hide_index=True)
-                        st.info("💡 Используйте эту информацию, чтобы вручную скорректировать ваш отчет в Excel.")
-                    else:
-                        st.info("Не удалось провести дополнительный анализ.")
+                if st.button("🔬 Проанализировать несопоставленные статьи"):
+            # Код ВНУТРИ if st.button должен иметь ЕЩЕ ОДИН отступ вправо
+            with st.spinner("Анализ остатков с помощью таксономии МСФО..."):
+                analysis_results = analyze_unmapped_items(llm, st.session_state.unmapped_items)
+                if analysis_results:
+                    st.subheader("Результаты анализа несопоставленных статей")
+                    analysis_df = pd.DataFrame(analysis_results)
+                    analysis_df.rename(columns={
+                        "source_item": "Исходная статья",
+                        "ifrs_equivalent": "Вероятный эквивалент в МСФО",
+                        "potential_parent": "Возможная родительская статья"
+                    }, inplace=True)
+                    st.dataframe(analysis_df, use_container_width=True, hide_index=True)
+                    st.info("💡 Используйте эту информацию, чтобы вручную скорректировать ваш отчет в Excel.")
+                else:
+                    st.info("Не удалось провести дополнительный анализ.")
 
         # Дополнительная информация для отладки
         with st.expander("📄 Показать JSON стандартизированных данных"):
