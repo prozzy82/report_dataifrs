@@ -34,11 +34,22 @@ except Exception:
     st.stop()
 
 
-llm = ChatOpenAI(
-    model_name="google/gemma-3-27b-it",
+# Ваша основная модель для большинства задач (быстрая и недорогая)
+llm_main = ChatOpenAI(
+    model_name="google/gemma-3-27b-it", # Ваша текущая модель
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
     temperature=0.1
+)
+
+# НОВАЯ ЧАСТЬ: Инициализация мощной модели для стандартизации
+# Используем более высокую температуру для сложных рассуждений, но все еще низкую для стабильности.
+# Можно оставить 0.1, если результаты и так хорошие.
+llm_standardizer = ChatOpenAI(
+    model_name="baidu/ernie-4.5-300b-a47b-paddle", # Модель от Baidu
+    openai_api_key=PROVIDER_API_KEY,
+    openai_api_base="https://api.novita.ai/v3/openai",
+    temperature=0.2 # Можно немного поднять для сложных задач
 )
 
 # --- РЕАЛИЗАЦИЯ ФУНКЦИЙ ---
@@ -361,7 +372,7 @@ if uploaded_files:
 
     # Шаг 2: Классификация отчета
     with st.spinner("🔍 Шаг 2/5: Определение типа отчета..."):
-        report_type = classify_report(llm, all_text)
+        report_type = classify_report(llm_main, all_text)
 
     if report_type == "Unknown":
         st.error("⚠️ Не удалось определить тип отчета.")
@@ -372,7 +383,7 @@ if uploaded_files:
     # Шаг 3: Извлечение сырых данных
     if st.session_state.get("raw_data") is None:
         with st.spinner("📋 Шаг 3/5: Извлечение сырых данных..."):
-            raw_data = extract_raw_financial_data(llm, all_text)
+            raw_data = extract_raw_financial_data(llm_main, all_text)
             st.session_state.raw_data = raw_data
 
     if st.session_state.raw_data:
@@ -384,7 +395,7 @@ if uploaded_files:
     # Шаг 4: Коррекция названий статей
     if st.session_state.raw_data and st.session_state.get("corrected_raw_data") is None:
         with st.spinner("✍️ Шаг 4/5: Коррекция названий статей..."):
-            corrected_data = correct_source_item_names(llm, st.session_state.raw_data, report_type)
+            corrected_data = correct_source_item_names(llm_main, st.session_state.raw_data, report_type)
             st.session_state.corrected_raw_data = corrected_data
             
             # Сравнение названий до и после коррекции
@@ -405,7 +416,7 @@ if uploaded_files:
     # Шаг 5: Стандартизация данных
     if st.session_state.get("corrected_raw_data") and st.session_state.get("processed_data") is None:
         with st.spinner("🔄 Шаг 5/5: Стандартизация данных..."):
-            response_dict = standardize_data(llm, st.session_state.corrected_raw_data, report_type)
+            response_dict = standardize_data(llm_standardizer, st.session_state.corrected_raw_data, report_type)
             st.session_state.processed_data = response_dict.get("standardized_data", [])
             st.session_state.unmapped_items = response_dict.get("unmapped_items", [])
 
