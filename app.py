@@ -46,7 +46,7 @@ llm_main = ChatOpenAI(
 # Используем более высокую температуру для сложных рассуждений, но все еще низкую для стабильности.
 # Можно оставить 0.1, если результаты и так хорошие.
 llm_standardizer = ChatOpenAI(
-    model_name="baidu/ernie-4.5-300b-a47b-paddle", # Модель от Baidu
+    model_name="mistralai/mistral-nemo",
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
     temperature=0.4 # Можно немного поднять для сложных задач
