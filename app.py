@@ -517,7 +517,7 @@ if st.session_state.get("unmapped_items"):
             source = item.get("source_item", "")
             suggestions = suggest_mapping_with_llm(llm, source, IFRS_TAXONOMY)
             if suggestions:
-                st.markdown(f"🔎 *{source}* возможно соответствует: **{', '.join(suggestions)}**")
+                st.markdown(f"- *{source}* возможно соответствует: **{', '.join(suggestions)}**")
                 suggestions_for_table.append({
                     "Исходная статья": source,
                     "Возможные соответствия (IFRS)": ", ".join(suggestions)
