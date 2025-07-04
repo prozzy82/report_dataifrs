@@ -13,8 +13,6 @@ import numpy as np
 # Импорт из вашего файла шаблонов
 from templates import REPORT_TEMPLATES, get_report_template_as_string, get_translation_map, get_report_codes
 
-from ifrs_taxonomy_helper import load_ifrs_taxonomy, suggest_mapping_from_taxonomy, build_unmapped_with_suggestions
-
 # Импорты LangChain
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -42,8 +40,6 @@ llm = ChatOpenAI(
     openai_api_base="https://api.novita.ai/v3/openai",
     temperature=0.1
 )
-
-IFRS_TAXONOMY = load_ifrs_taxonomy("json_taxonomy_rus.json")
 
 # --- РЕАЛИЗАЦИЯ ФУНКЦИЙ ---
 
@@ -251,38 +247,6 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
     except Exception as e:
         st.error(f"Ошибка стандартизации: {e}")
         return {"standardized_data": [], "unmapped_items": raw_data}
-
-# ИСПРАВЛЕННАЯ ВЕРСИЯ ФУНКЦИИ С JSON MODE
-@st.cache_data
-def suggest_mapping_with_llm(_llm, source_item: str, taxonomy_dict: dict, max_suggestions=3) -> list:
-    """Использует LLM и таксономию IFRS для подсказки наиболее подходящих соответствий"""
-    parser = JsonOutputParser()
-    taxonomy_items = list(taxonomy_dict.values())[:500]
-
-    prompt_text = (
-        "Ты — финансовый эксперт. Для исходного термина '{source_item}' подбери до {max_suggestions} "
-        "наиболее подходящих по смыслу терминов из этого списка таксономии IFRS:\n{taxonomy_items}\n\n"
-        "Ответь JSON-объектом с одним ключом 'suggestions', который содержит массив строк. "
-        "Например: {{\"suggestions\": [\"Выручка\", \"Доход\"]}}"
-    )
-    prompt = ChatPromptTemplate.from_template(prompt_text)
-
-    # Привязываем JSON mode к модели. Это заставит модель генерировать только JSON.
-    json_llm = _llm.bind(response_format={"type": "json_object"})
-    
-    chain = prompt | json_llm | parser
-
-    try:
-        # Модель вернет словарь, например {'suggestions': [...]}. Извлекаем из него список.
-        result = chain.invoke({
-            "source_item": source_item,
-            "taxonomy_items": json.dumps(taxonomy_items, ensure_ascii=False),
-            "max_suggestions": max_suggestions
-        })
-        return result.get("suggestions", []) # Безопасно извлекаем список
-    except Exception as e:
-        st.warning(f"Ошибка при получении подсказок для '{source_item}': {e}")
-        return []
 
 def flatten_data_for_display(data: list, report_type: str) -> list:
     """Преобразует структурированные данные в плоский формат для отображения"""
@@ -508,37 +472,6 @@ if uploaded_files:
             unmapped_df = display_raw_data(st.session_state.unmapped_items)
             if not unmapped_df.empty:
                 st.dataframe(unmapped_df, use_container_width=True, hide_index=True)
-
-        # Подсказки по IFRS-таксономии
-if st.session_state.get("unmapped_items"):
-    with st.expander("💡 Подсказки на основе таксономии IFRS (с LLM)", expanded=False):
-        suggestions_for_table = []
-        for item in st.session_state.unmapped_items:
-            source = item.get("source_item", "")
-            suggestions = suggest_mapping_with_llm(llm, source, IFRS_TAXONOMY)
-            if suggestions:
-                st.markdown(f" *{source}* возможно соответствует: **{', '.join(suggestions)}**")
-                suggestions_for_table.append({
-                    "Исходная статья": source,
-                    "Возможные соответствия (IFRS)": ", ".join(suggestions)
-                })
-            else:
-                st.markdown(f"⚠️ *{source}* — соответствие не найдено")
-
-        if suggestions_for_table:
-            with st.expander("📥 Скачать подсказки по несопоставленным статьям"):
-                suggestion_df = pd.DataFrame(suggestions_for_table)
-                st.dataframe(suggestion_df, use_container_width=True, hide_index=True)
-
-                excel_output = io.BytesIO()
-                with pd.ExcelWriter(excel_output, engine='xlsxwriter') as writer:
-                    suggestion_df.to_excel(writer, index=False, sheet_name="IFRS_Suggestions")
-
-                st.download_button(
-                    "💾 Скачать Excel",
-                    data=excel_output.getvalue(),
-                    file_name="unmapped_suggestions_llm.xlsx"
-                )
 
         # Дополнительная информация для отладки
         with st.expander("📄 Показать JSON стандартизированных данных"):
