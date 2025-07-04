@@ -252,6 +252,31 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
         st.error(f"Ошибка стандартизации: {e}")
         return {"standardized_data": [], "unmapped_items": raw_data}
 
+@st.cache_data
+def suggest_mapping_with_llm(llm, source_item: str, taxonomy_dict: dict, max_suggestions=3) -> list:
+    """Использует LLM и таксономию IFRS для подсказки наиболее подходящих соответствий"""
+    parser = JsonOutputParser()
+    taxonomy_items = list(taxonomy_dict.values())[:500]  # ограничим для стабильности
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "Ты — опытный финансовый аналитик. Пользователь прислал название статьи: '{source_item}'.\n"
+         "Вот список терминов из таксономии IFRS на русском:\n{taxonomy_items}\n\n"
+         f"Подбери {max_suggestions} наиболее подходящих терминов из списка.\n"
+         "Ответь ТОЛЬКО массивом строк в JSON формате (например: [\"Выручка\", \"Доход\"]). "
+         "Сохраняй финансовый смысл и не подбирай похожие слова по звучанию, только по значению."),
+    ])
+    chain = prompt | llm | parser
+
+    try:
+        return chain.invoke({
+            "source_item": source_item,
+            "taxonomy_items": taxonomy_items,
+            "max_suggestions": max_suggestions
+        })
+    except Exception as e:
+        return []
+
 def flatten_data_for_display(data: list, report_type: str) -> list:
     """Преобразует структурированные данные в плоский формат для отображения"""
     flat_list = []
@@ -479,28 +504,34 @@ if uploaded_files:
 
         # Подсказки по IFRS-таксономии
 if st.session_state.get("unmapped_items"):
-    with st.expander("💡 Подсказки на основе таксономии IFRS", expanded=False):
+    with st.expander("💡 Подсказки на основе таксономии IFRS (с LLM)", expanded=False):
+        suggestions_for_table = []
         for item in st.session_state.unmapped_items:
             source = item.get("source_item", "")
-            suggestion = suggest_mapping_from_taxonomy(source, IFRS_TAXONOMY)
-            if suggestion:
-                st.markdown(f"🔎 *{source}* возможно соответствует: **{suggestion}**")
+            suggestions = suggest_mapping_with_llm(llm, source, IFRS_TAXONOMY)
+            if suggestions:
+                st.markdown(f"🔎 *{source}* возможно соответствует: **{', '.join(suggestions)}**")
+                suggestions_for_table.append({
+                    "Исходная статья": source,
+                    "Возможные соответствия (IFRS)": ", ".join(suggestions)
+                })
             else:
                 st.markdown(f"⚠️ *{source}* — соответствие не найдено")
 
-        with st.expander("📥 Скачать подсказки по несопоставленным статьям"):
-            suggestion_df = pd.DataFrame(build_unmapped_with_suggestions(st.session_state.unmapped_items, IFRS_TAXONOMY))
-            st.dataframe(suggestion_df, use_container_width=True, hide_index=True)
+        if suggestions_for_table:
+            with st.expander("📥 Скачать подсказки по несопоставленным статьям"):
+                suggestion_df = pd.DataFrame(suggestions_for_table)
+                st.dataframe(suggestion_df, use_container_width=True, hide_index=True)
 
-            excel_output = io.BytesIO()
-            with pd.ExcelWriter(excel_output, engine='xlsxwriter') as writer:
-                suggestion_df.to_excel(writer, index=False, sheet_name="IFRS_Suggestions")
+                excel_output = io.BytesIO()
+                with pd.ExcelWriter(excel_output, engine='xlsxwriter') as writer:
+                    suggestion_df.to_excel(writer, index=False, sheet_name="IFRS_Suggestions")
 
-            st.download_button(
-                "💾 Скачать Excel", 
-                data=excel_output.getvalue(), 
-                file_name="unmapped_suggestions.xlsx"
-            )
+                st.download_button(
+                    "💾 Скачать Excel",
+                    data=excel_output.getvalue(),
+                    file_name="unmapped_suggestions_llm.xlsx"
+                )
 
         # Дополнительная информация для отладки
         with st.expander("📄 Показать JSON стандартизированных данных"):
