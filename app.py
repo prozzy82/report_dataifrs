@@ -253,7 +253,7 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
         return {"standardized_data": [], "unmapped_items": raw_data}
 
 @st.cache_data
-def suggest_mapping_with_llm(llm, source_item: str, taxonomy_dict: dict, max_suggestions=3) -> list:
+def suggest_mapping_with_llm(_llm, source_item: str, taxonomy_dict: dict, max_suggestions=3) -> list:
     """Использует LLM и таксономию IFRS для подсказки наиболее подходящих соответствий"""
     parser = JsonOutputParser()
     taxonomy_items = list(taxonomy_dict.values())[:500]  # ограничим для стабильности
@@ -266,7 +266,7 @@ def suggest_mapping_with_llm(llm, source_item: str, taxonomy_dict: dict, max_sug
          "Ответь ТОЛЬКО массивом строк в JSON формате (например: [\"Выручка\", \"Доход\"]). "
          "Сохраняй финансовый смысл и не подбирай похожие слова по звучанию, только по значению."),
     ])
-    chain = prompt | llm | parser
+    chain = prompt | _llm | parser # <--- ИЗМЕНЕНИЕ ЗДЕСЬ
 
     try:
         return chain.invoke({
@@ -275,6 +275,8 @@ def suggest_mapping_with_llm(llm, source_item: str, taxonomy_dict: dict, max_sug
             "max_suggestions": max_suggestions
         })
     except Exception as e:
+        # Рекомендую добавить логирование ошибки для отладки
+        st.warning(f"Ошибка при получении подсказок для '{source_item}': {e}")
         return []
 
 def flatten_data_for_display(data: list, report_type: str) -> list:
