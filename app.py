@@ -252,30 +252,35 @@ def standardize_data(_llm, raw_data: list, report_type: str) -> dict:
         st.error(f"Ошибка стандартизации: {e}")
         return {"standardized_data": [], "unmapped_items": raw_data}
 
+# ИСПРАВЛЕННАЯ ВЕРСИЯ ФУНКЦИИ С JSON MODE
 @st.cache_data
 def suggest_mapping_with_llm(_llm, source_item: str, taxonomy_dict: dict, max_suggestions=3) -> list:
     """Использует LLM и таксономию IFRS для подсказки наиболее подходящих соответствий"""
     parser = JsonOutputParser()
-    taxonomy_items = list(taxonomy_dict.values())[:500]  # ограничим для стабильности
+    taxonomy_items = list(taxonomy_dict.values())[:500]
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "Ты — опытный финансовый аналитик. Пользователь прислал название статьи: '{source_item}'.\n"
-         "Вот список терминов из таксономии IFRS на русском:\n{taxonomy_items}\n\n"
-         f"Подбери {max_suggestions} наиболее подходящих терминов из списка.\n"
-         "Ответь ТОЛЬКО массивом строк в JSON формате (например: [\"Выручка\", \"Доход\"]). "
-         "Сохраняй финансовый смысл и не подбирай похожие слова по звучанию, только по значению."),
-    ])
-    chain = prompt | _llm | parser # <--- ИЗМЕНЕНИЕ ЗДЕСЬ
+    prompt_text = (
+        "Ты — финансовый эксперт. Для исходного термина '{source_item}' подбери до {max_suggestions} "
+        "наиболее подходящих по смыслу терминов из этого списка таксономии IFRS:\n{taxonomy_items}\n\n"
+        "Ответь JSON-объектом с одним ключом 'suggestions', который содержит массив строк. "
+        "Например: {{\"suggestions\": [\"Выручка\", \"Доход\"]}}"
+    )
+    prompt = ChatPromptTemplate.from_template(prompt_text)
+
+    # Привязываем JSON mode к модели. Это заставит модель генерировать только JSON.
+    json_llm = _llm.bind(response_format={"type": "json_object"})
+    
+    chain = prompt | json_llm | parser
 
     try:
-        return chain.invoke({
+        # Модель вернет словарь, например {'suggestions': [...]}. Извлекаем из него список.
+        result = chain.invoke({
             "source_item": source_item,
-            "taxonomy_items": taxonomy_items,
+            "taxonomy_items": json.dumps(taxonomy_items, ensure_ascii=False),
             "max_suggestions": max_suggestions
         })
+        return result.get("suggestions", []) # Безопасно извлекаем список
     except Exception as e:
-        # Рекомендую добавить логирование ошибки для отладки
         st.warning(f"Ошибка при получении подсказок для '{source_item}': {e}")
         return []
 
