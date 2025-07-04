@@ -49,7 +49,7 @@ llm_standardizer = ChatOpenAI(
     model_name="baidu/ernie-4.5-300b-a47b-paddle", # Модель от Baidu
     openai_api_key=PROVIDER_API_KEY,
     openai_api_base="https://api.novita.ai/v3/openai",
-    temperature=0.2 # Можно немного поднять для сложных задач
+    temperature=0.7 # Можно немного поднять для сложных задач
 )
 
 # --- РЕАЛИЗАЦИЯ ФУНКЦИЙ ---
