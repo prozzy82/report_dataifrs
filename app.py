@@ -496,8 +496,8 @@ else:
 
 # Добавляем подпись внизу боковой панели с отступом
 st.sidebar.markdown(f"""
-<div style='margin-top: 500px; text-align: center; font-size: 0.875em; color: gray;'>
+<div style='margin-top: 300px; font-size: 0.875em; color: gray;'>
     ©D.Prozorovskiy<br>
-    Дата: 01.03.2025
+    Дата: 01.07.2025
 </div>
 """, unsafe_allow_html=True)
