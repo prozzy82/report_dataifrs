@@ -344,6 +344,9 @@ uploaded_files = st.sidebar.file_uploader(
     "Загрузите сканы отчета", type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True
 )
 
+# Добавляем подпись внизу боковой панели
+st.sidebar.markdown("©D.Prozorovskiy")
+
 if uploaded_files:
     file_names = [f.name for f in uploaded_files]
     # Инициализация сессионных переменных
